@@ -5,23 +5,40 @@ Visualizações e KPIs para análise de solicitações de coleta de lixo
 """
 
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import plotly.express as px
-from plotly.subplots import make_subplots
 import dash
 from dash import dcc, html, Input, Output
+import plotly.express as px
 
 # Carregar e preparar dados
+df = pd.read_csv('SLE.csv')
 
 # Limpeza e normalização
+df_normalized = df.copy()
+df_normalized = df_normalized.dropna(axis=1, how='any')
+df_normalized.columns = df_normalized.columns.str.lower().str.replace(" ", "_")
 
 
 # Padronizar valores de 'bac'
+for idx,elemento in enumerate(df_normalized['bac']):
+  if (elemento == 'Compost-240'):
+    df_normalized.loc[idx,'bac']= 'Compost - 240'
+  if (elemento == 'Compost-132'):
+    df_normalized.loc[idx,'bac']= 'Compost - 132'
+  if (elemento == 'Compost- 132'):
+    df_normalized.loc[idx,'bac']= 'Compost - 132'
+
+# Converter data e criar períodos
+df_normalized['date_fermeture'] = pd.to_datetime(df_normalized['date_fermeture'], errors='coerce')
+df_normalized["month"] = df_normalized["date_fermeture"].dt.to_period("M")
+df_normalized['week'] = df_normalized["date_fermeture"].dt.to_period("W")
 
 
 # ==================== CALCULAR MÉTRICAS ====================
-test=0
+total_requests = len(df_normalized)
+total_replacement = (df_normalized['requete'] == 'Remplacement').sum()
+total_delivery = (df_normalized['requete'] == 'Livraison').sum()
+replacement_rate = (total_replacement / total_requests) * 100 if total_requests > 0 else 0
+delivery_rate = (total_delivery / total_requests) * 100 if total_requests > 0 else 0
 
 
 # ==================== INICIALIZAR APP ====================
@@ -114,22 +131,22 @@ app.layout = html.Div(style=styles['container'], children=[
     html.Div(style=styles['kpi_container'], children=[
         html.Div(style=styles['kpi_card'], children=[
             html.Div("Total de Solicitações", style=styles['kpi_title']),
-            html.Div(f"{test:,}", style={**styles['kpi_value'], **styles['kpi_value_primary']})
+            html.Div(f"{total_requests:,}", style={**styles['kpi_value'], **styles['kpi_value_primary']})
         ]),
 
         html.Div(style=styles['kpi_card'], children=[
             html.Div("Taxa de Reposição", style=styles['kpi_title']),
-            html.Div(f"{test:.1f}%", style={**styles['kpi_value'], **styles['kpi_value_danger']})
+            html.Div(f"{replacement_rate:.1f}%", style={**styles['kpi_value'], **styles['kpi_value_danger']})
         ]),
 
         html.Div(style=styles['kpi_card'], children=[
             html.Div("Solicitações (Reposição)", style=styles['kpi_title']),
-            html.Div(f"{test:,}", style={**styles['kpi_value'], **styles['kpi_value_warning']})
+            html.Div(f"{total_replacement:,}", style={**styles['kpi_value'], **styles['kpi_value_warning']})
         ]),
 
         html.Div(style=styles['kpi_card'], children=[
             html.Div("Solicitações (Entrega)", style=styles['kpi_title']),
-            html.Div(f"{test:,}", style={**styles['kpi_value'], **styles['kpi_value_success']})
+            html.Div(f"{total_delivery:,}", style={**styles['kpi_value'], **styles['kpi_value_success']})
         ]),
     ]),
 
@@ -166,6 +183,28 @@ app.layout = html.Div(style=styles['container'], children=[
 
 
 # ==================== CALLBACKS ====================
+@app.callback(Output('pie-requete','figure'),
+               Input('pie-requete','id'))
+def update_pie_requete(_):
+    requete_counts = df_normalized['requete'].value_counts().reset_index()
+    requete_counts.columns = ["requete", "count"]
+
+    fig = px.pie(
+        requete_counts,
+        names="requete",
+        values="count",
+        title="Distribuição das Requêtes",
+        hole=0  # coloque 0.35 se quiser donut
+    )
+
+    fig.update_layout(
+        height=500,
+        showlegend=True,
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)'
+    )
+    return fig
+
 
 
 # ==================== EXECUTAR ====================
